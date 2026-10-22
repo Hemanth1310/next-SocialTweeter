@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User { 
+  id           String   @id @default(cuid())
+  email        String   @unique
+  /// Display name shown in bold beside the handle. Not unique.
+  username     String   @db.VarChar(50)
+  /// Unique @handle, lowercase letters, numbers and underscores.
+  handle       String   @unique @db.VarChar(15)
+  passwordHash String
+  avatarUrl    String?
+  bio          String?  @db.VarChar(160)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tweets  Tweet[]
+  upvotes Upvote[]
+} 
+model Tweet { 
+   id        String   @id @default(cuid())
+  content   String   @db.VarChar(280)
+  userId    String
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upvotes Upvote[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+} 
+
+model Upvote{
+  userId    String
+  tweetId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tweet Tweet @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tweetId])
+  @@index([tweetId])
+  
+}
