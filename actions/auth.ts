@@ -1,5 +1,6 @@
 import { createSession, deleteSession, hashPassword, verifyPassword } from "@/lib/auth";
 import db from "@/lib/db";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { loginSchema, registerSchema } from "@/lib/validations/auth";
 import { redirect } from "next/navigation";
 
@@ -7,7 +8,7 @@ import z from "zod";
 
 export type AuthFormState = {
   message?: string;
-  errors?: Partial<Record<"username" | "handle" | "email" | "password", string[]>>;
+  errors?: Partial<Record<"username" | "handle" | "email" | "password" | "_form", string[]>>;
   /** Echoed back so the form can repopulate non-secret fields after an error. */
   fields?: Partial<Record<"username" | "handle" | "email", string>>;
 };
@@ -28,21 +29,30 @@ export async function loginAction(_prevState:AuthFormState, formData:FormData){
     }
 
     const {email, password} = parsed.data
-    const user  = await db.user.findUnique({
-        where:{email},
-    })
+    try{
+         const user  = await db.user.findUnique({
+                where:{email},
+            })
 
-    if(!user){
-        return {errors:{email:"User not found"},fields}
+            if(!user){
+                return {errors:{email:"User not found"},fields}
+            }
+
+            const passwordMatch = verifyPassword(password,user.passwordHash)
+
+            if(!passwordMatch){
+                return {errors:{password:"Password in incorrect"},fields}
+            }
+
+            await createSession({userId:user.id,handle:user.handle})
+    }catch(error){
+        console.error("Database connection failed during login:", error);
+        return { 
+        errors: { _form: "Database connection error. Please try again later." }, 
+        fields 
+        };
     }
-
-    const passwordMatch = verifyPassword(password,user.passwordHash)
-
-    if(!passwordMatch){
-        return {errors:{password:"Password in incorrect"},fields}
-    }
-
-    await createSession({userId:user.id,handle:user.handle})
+   
 
     redirect('/')
 
@@ -72,13 +82,31 @@ export async function registerAction(_prev:AuthFormState, formData:FormData){
     }
     const {username, email, handle} = parsed.data
     const passwordHash =await hashPassword(password)
-    await db.user.create({
-        data:{
-            email,
-            username,
-            handle,
-            passwordHash
+    try{
+            await db.user.create({
+                data:{
+                    email,
+                    username,
+                    handle,
+                    passwordHash
+                }
+            })
+    }catch(error){
+        if(error instanceof Prisma.PrismaClientKnownRequestError){
+            if(error.code==='P2002'){
+                 return { 
+                    errors: { email: "User already exists" }, 
+                    fields 
+                };
+            }
         }
-    })
-    
+        console.error("Database connection failed during login:", error);
+        return { 
+        errors: { _form: "Database connection error. Please try again later." }, 
+        fields 
+        };
+    }
+   
+
+    redirect('/')
 }
